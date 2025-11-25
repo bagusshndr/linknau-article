@@ -1,4 +1,4 @@
-package db
+package database
 
 import (
 	"fmt"
@@ -10,10 +10,10 @@ import (
 	"gorm.io/gorm"
 )
 
-func NewGormDB(cfg *config.Config) *gorm.DB {
+func NewPostgres(cfg *config.Config) *gorm.DB {
 	dsn := fmt.Sprintf(
 		"host=%s port=%s user=%s password=%s dbname=%s sslmode=%s",
-		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPass, cfg.DBName, cfg.DBSSLMode,
+		cfg.DBHost, cfg.DBPort, cfg.DBUser, cfg.DBPass, cfg.DBName, cfg.DBSSL,
 	)
 
 	db, err := gorm.Open(postgres.Open(dsn), &gorm.Config{})

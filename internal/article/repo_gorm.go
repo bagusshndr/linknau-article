@@ -6,14 +6,6 @@ import (
 	"gorm.io/gorm"
 )
 
-type Repository interface {
-	Create(ctx context.Context, a *Article) error
-	FindByID(ctx context.Context, id uint) (*Article, error)
-	FindAll(ctx context.Context, offset, limit int) ([]Article, int64, error)
-	Update(ctx context.Context, a *Article) error
-	Delete(ctx context.Context, id uint) error
-}
-
 type gormRepository struct {
 	db *gorm.DB
 }
@@ -27,15 +19,13 @@ func (r *gormRepository) Create(ctx context.Context, a *Article) error {
 }
 
 func (r *gormRepository) FindByID(ctx context.Context, id uint) (*Article, error) {
-	var a Article
+	var art Article
 	if err := r.db.WithContext(ctx).
-		Preload("Photos", func(tx *gorm.DB) *gorm.DB {
-			return tx.Order("photos.order ASC")
-		}).
-		First(&a, id).Error; err != nil {
+		Preload("Photos").
+		First(&art, id).Error; err != nil {
 		return nil, err
 	}
-	return &a, nil
+	return &art, nil
 }
 
 func (r *gormRepository) FindAll(ctx context.Context, offset, limit int) ([]Article, int64, error) {
@@ -44,18 +34,15 @@ func (r *gormRepository) FindAll(ctx context.Context, offset, limit int) ([]Arti
 		total    int64
 	)
 
-	q := r.db.WithContext(ctx).Model(&Article{})
-	if err := q.Count(&total).Error; err != nil {
+	tx := r.db.WithContext(ctx).Model(&Article{})
+	if err := tx.Count(&total).Error; err != nil {
 		return nil, 0, err
 	}
 
-	if err := q.
-		Preload("Photos", func(tx *gorm.DB) *gorm.DB {
-			return tx.Order("photos.order ASC")
-		}).
-		Order("created_at DESC").
+	if err := tx.Preload("Photos").
 		Offset(offset).
 		Limit(limit).
+		Order("created_at DESC").
 		Find(&articles).Error; err != nil {
 		return nil, 0, err
 	}
@@ -64,23 +51,15 @@ func (r *gormRepository) FindAll(ctx context.Context, offset, limit int) ([]Arti
 }
 
 func (r *gormRepository) Update(ctx context.Context, a *Article) error {
-	// Strategy: delete existing photos, then recreate (simple & clear)
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("article_id = ?", a.ID).Delete(&Photo{}).Error; err != nil {
 			return err
 		}
-		if err := tx.Model(&Article{}).Where("id = ?", a.ID).Updates(map[string]interface{}{
-			"title":        a.Title,
-			"slug":         a.Slug,
-			"content":      a.Content,
-			"published_at": a.PublishedAt,
-		}).Error; err != nil {
-			return err
+		for i := range a.Photos {
+			a.Photos[i].ArticleID = a.ID
 		}
-		if len(a.Photos) > 0 {
-			if err := tx.Model(a).Association("Photos").Replace(a.Photos); err != nil {
-				return err
-			}
+		if err := tx.Save(a).Error; err != nil {
+			return err
 		}
 		return nil
 	})
